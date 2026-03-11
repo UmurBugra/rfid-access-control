@@ -2,6 +2,8 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
+#include <sys/time.h>
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_timer.h"
@@ -27,7 +29,7 @@ extern const char dashboard_html_start[] asm("_binary_dashboard_html_start");
  * ============================================================ */
 #define MAX_BODY_SIZE       512     /* POST body maks boyut */
 #define LOG_READ_BUF_SIZE   8192   /* Log okuma buffer boyutu */
-#define MAX_URI_HANDLERS    16
+#define MAX_URI_HANDLERS    18
 
 /* ============================================================
  * Modul degiskenleri
@@ -704,6 +706,64 @@ static esp_err_t password_post_handler(httpd_req_t *req)
 }
 
 /* ============================================================
+ * POST /api/time — Sistem saatini ayarla (korumali)
+ * ============================================================ */
+static esp_err_t time_post_handler(httpd_req_t *req)
+{
+    if (!validate_session(req)) {
+        return send_unauthorized(req);
+    }
+
+    char body[MAX_BODY_SIZE];
+    if (read_body(req, body, sizeof(body)) != ESP_OK) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"Gecersiz istek\"}");
+        return ESP_OK;
+    }
+
+    cJSON *json = cJSON_Parse(body);
+    if (json == NULL) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"Gecersiz JSON\"}");
+        return ESP_OK;
+    }
+
+    cJSON *j_ts = cJSON_GetObjectItem(json, "timestamp");
+    if (!cJSON_IsNumber(j_ts)) {
+        cJSON_Delete(json);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"timestamp gerekli\"}");
+        return ESP_OK;
+    }
+
+    time_t new_time = (time_t)j_ts->valuedouble;
+    cJSON_Delete(json);
+
+    /* Gecerlilik kontrolu — 2024 oncesi kabul etme */
+    if (new_time < 1704067200) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"error\":\"Gecersiz zaman damgasi\"}");
+        return ESP_OK;
+    }
+
+    struct timeval tv = {
+        .tv_sec = new_time,
+        .tv_usec = 0,
+    };
+    settimeofday(&tv, NULL);
+
+    ESP_LOGI(TAG, "Sistem saati ayarlandi: %ld", (long)new_time);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}
+
+/* ============================================================
  * POST /api/ota — OTA firmware guncelleme (korumali, streaming)
  * ============================================================ */
 #define OTA_BUF_SIZE 1024
@@ -854,6 +914,9 @@ static const httpd_uri_t uri_password_post = {
 static const httpd_uri_t uri_ota_post = {
     .uri = "/api/ota", .method = HTTP_POST, .handler = ota_post_handler
 };
+static const httpd_uri_t uri_time_post = {
+    .uri = "/api/time", .method = HTTP_POST, .handler = time_post_handler
+};
 
 /* ============================================================
  * Public API
@@ -890,8 +953,9 @@ esp_err_t web_server_init(void)
     httpd_register_uri_handler(s_server, &uri_config_post);
     httpd_register_uri_handler(s_server, &uri_password_post);
     httpd_register_uri_handler(s_server, &uri_ota_post);
+    httpd_register_uri_handler(s_server, &uri_time_post);
 
-    ESP_LOGI(TAG, "HTTP server baslatildi — 14 endpoint kayitli");
+    ESP_LOGI(TAG, "HTTP server baslatildi — 15 endpoint kayitli");
     return ESP_OK;
 }
 

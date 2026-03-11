@@ -43,9 +43,18 @@ border-radius:6px;background:#0f3460;color:#eee;font-size:.9rem}
 .log-dates button{padding:.4rem .6rem;border:1px solid #333;border-radius:4px;
 background:#0f3460;color:#ccc;cursor:pointer;font-size:.8rem}
 .log-dates button.active{background:#e94560;color:#fff;border-color:#e94560}
-.log-entry{padding:.4rem 0;border-bottom:1px solid #1a1a2e;font-size:.85rem}
+.log-entry{padding:.4rem 0;border-bottom:1px solid #1a1a2e;font-size:.85rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.log-entry .log-text{flex:1;min-width:200px}
 .log-ok{color:#2ecc71}
 .log-deny{color:#e74c3c}
+.btn-auth{background:#f39c12;color:#fff;padding:.2rem .5rem;border:none;border-radius:4px;cursor:pointer;font-size:.75rem;white-space:nowrap}
+.btn-auth:hover{background:#e67e22}
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:#16213e;padding:1.5rem;border-radius:12px;width:90%;max-width:360px}
+.modal h3{margin-bottom:1rem;font-size:1rem;color:#e94560}
+.modal input{width:100%;padding:.5rem;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:.9rem;margin-bottom:.8rem;box-sizing:border-box}
+.modal .modal-btns{display:flex;gap:.5rem;justify-content:flex-end}
 @media(max-width:480px){.info-grid{grid-template-columns:1fr}.form-row{flex-direction:column}}
 </style>
 </head>
@@ -132,6 +141,19 @@ display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#ff
 <div class="info-grid" id="s_grid"></div>
 <div style="margin-top:1rem;text-align:center">
 <button class="btn btn-p" onclick="loadStatus()">Yenile</button>
+</div>
+</div>
+
+<div id="auth_modal" class="modal-overlay" onclick="if(event.target===this)closeAuthModal()">
+<div class="modal">
+<h3>Kart Yetkilendir</h3>
+<div style="color:#888;font-size:.85rem;margin-bottom:.5rem">UID: <strong id="auth_uid_display"></strong></div>
+<input type="text" id="auth_name" placeholder="Kart sahibi ismi" maxlength="31">
+<div class="modal-btns">
+<button class="btn btn-d" onclick="closeAuthModal()">Iptal</button>
+<button class="btn btn-s" onclick="doQuickAuth()">Yetki Ver</button>
+</div>
+<div class="msg" id="auth_msg"></div>
 </div>
 </div>
 
@@ -252,9 +274,13 @@ var time=d.toLocaleTimeString('tr-TR');
 var div=document.createElement('div');
 div.className='log-entry';
 var cls=e.result==='OK'?'log-ok':'log-deny';
-div.innerHTML='<span style="color:#888">'+time+'</span> '+
+var authBtn='';
+if(e.result==='DENY'){
+authBtn='<button class="btn-auth" onclick="openAuthModal(\''+e.uid+'\')">Yetki Ver</button>';
+}
+div.innerHTML='<span class="log-text"><span style="color:#888">'+time+'</span> '+
 '<span class="'+cls+'">'+e.result+'</span> '+
-'<strong>'+e.uid+'</strong> '+e.name;
+'<strong>'+e.uid+'</strong> '+e.name+'</span>'+authBtn;
 el.appendChild(div);
 }catch(x){}
 });
@@ -395,8 +421,42 @@ btn.disabled=false;btn.textContent='Guncellemeyi Baslat';prog.style.display='non
 xhr.send(file);
 }
 
-/* Sayfa yuklendiginde kartlari yukle */
+/* === HIZLI YETKILENDIRME (logdan) === */
+function openAuthModal(uid){
+document.getElementById('auth_uid_display').textContent=uid;
+document.getElementById('auth_name').value='';
+document.getElementById('auth_msg').className='msg';
+document.getElementById('auth_modal').classList.add('active');
+setTimeout(function(){document.getElementById('auth_name').focus();},100);
+}
+function closeAuthModal(){
+document.getElementById('auth_modal').classList.remove('active');
+}
+async function doQuickAuth(){
+var uid=document.getElementById('auth_uid_display').textContent;
+var name=document.getElementById('auth_name').value.trim();
+if(!name){showMsg('auth_msg','Isim gerekli',false);return;}
+var r=await api('/api/cards',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({uid:uid,name:name})});
+if(!r)return;
+if(r.ok){closeAuthModal();showMsg('c_msg','Kart yetkilendirildi: '+uid,true);
+if(currentLogDate)loadLog(currentLogDate);}
+else{var d=await r.json();showMsg('auth_msg',d.error||'Hata',false);}
+}
+
+/* === SAAT SENKRONIZASYONU === */
+async function syncTime(){
+var ts=Math.floor(Date.now()/1000);
+var r=await api('/api/time',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({timestamp:ts})});
+if(r&&r.ok){console.log('Saat senkronize edildi');}
+}
+
+/* Sayfa yuklendiginde kartlari yukle ve saati senkronize et */
 loadCards();
+syncTime();
 </script>
 </body>
 </html>

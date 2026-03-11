@@ -1,10 +1,12 @@
 #include "wifi_manager.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "esp_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "nvs_store.h"
@@ -36,6 +38,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
                              int32_t event_id, void *event_data);
 static esp_err_t configure_ap(void);
 static esp_err_t configure_sta(void);
+static void start_sntp(void);
 
 /* ============================================================
  * Public API
@@ -396,5 +399,37 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "STA IP alindi: " IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(s_wifi_event_group, WIFI_STA_CONNECTED_BIT);
+
+        /* Internet baglantisi var — SNTP baslat */
+        start_sntp();
     }
+}
+
+/* ============================================================
+ * SNTP saat senkronizasyonu
+ * ============================================================ */
+
+static void sntp_sync_notification(struct timeval *tv)
+{
+    ESP_LOGI(TAG, "SNTP saat senkronize edildi");
+}
+
+static void start_sntp(void)
+{
+    /* Zaten baslatildiysa tekrar baslatma */
+    if (esp_sntp_enabled()) {
+        ESP_LOGI(TAG, "SNTP zaten aktif");
+        return;
+    }
+
+    ESP_LOGI(TAG, "SNTP baslatiliyor...");
+    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_set_time_sync_notification_cb(sntp_sync_notification);
+    esp_sntp_init();
+
+    /* Saat dilimi: Turkiye (UTC+3) */
+    setenv("TZ", "UTC-3", 1);
+    tzset();
 }
