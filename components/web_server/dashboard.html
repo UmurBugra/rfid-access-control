@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>KAPI Sistemi</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#1a1a2e;color:#eee;font-size:14px}
+nav{background:#16213e;display:flex;flex-wrap:wrap;padding:.5rem;gap:.3rem;
+position:sticky;top:0;z-index:10}
+nav button{padding:.5rem .8rem;border:none;border-radius:6px;background:#0f3460;
+color:#ccc;cursor:pointer;font-size:.85rem}
+nav button.active{background:#e94560;color:#fff}
+nav button:last-child{margin-left:auto;background:#333}
+.tab{display:none;padding:1rem;max-width:800px;margin:0 auto}
+.tab.active{display:block}
+h2{margin-bottom:1rem;font-size:1.1rem;border-bottom:1px solid #333;padding-bottom:.5rem}
+h3{margin:1.5rem 0 .8rem;font-size:1rem}
+table{width:100%;border-collapse:collapse;margin-bottom:1rem}
+th,td{padding:.5rem;text-align:left;border-bottom:1px solid #222}
+th{background:#16213e;font-size:.85rem;color:#aaa}
+td{font-size:.9rem}
+.form-row{display:flex;gap:.5rem;margin-bottom:.8rem;flex-wrap:wrap}
+.form-row input,.form-row select{flex:1;min-width:120px;padding:.5rem;border:1px solid #333;
+border-radius:6px;background:#0f3460;color:#eee;font-size:.9rem}
+.form-row input::placeholder{color:#666}
+.btn{padding:.5rem 1rem;border:none;border-radius:6px;cursor:pointer;font-size:.85rem}
+.btn-p{background:#e94560;color:#fff}
+.btn-p:hover{background:#c73e54}
+.btn-d{background:#c0392b;color:#fff}
+.btn-d:hover{background:#a93226}
+.btn-s{background:#27ae60;color:#fff}
+.btn-s:hover{background:#219a52}
+.msg{padding:.5rem;border-radius:6px;margin:.5rem 0;font-size:.85rem;display:none}
+.msg.ok{display:block;background:#1a4731;color:#2ecc71}
+.msg.err{display:block;background:#4a1a1a;color:#e74c3c}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.info-item{background:#16213e;padding:.8rem;border-radius:8px}
+.info-item .label{color:#888;font-size:.8rem}
+.info-item .value{font-size:1.1rem;margin-top:.3rem}
+.log-dates{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:1rem}
+.log-dates button{padding:.4rem .6rem;border:1px solid #333;border-radius:4px;
+background:#0f3460;color:#ccc;cursor:pointer;font-size:.8rem}
+.log-dates button.active{background:#e94560;color:#fff;border-color:#e94560}
+.log-entry{padding:.4rem 0;border-bottom:1px solid #1a1a2e;font-size:.85rem}
+.log-ok{color:#2ecc71}
+.log-deny{color:#e74c3c}
+@media(max-width:480px){.info-grid{grid-template-columns:1fr}.form-row{flex-direction:column}}
+</style>
+</head>
+<body>
+<nav>
+<button class="active" onclick="showTab('cards')">Kartlar</button>
+<button onclick="showTab('logs')">Loglar</button>
+<button onclick="showTab('config')">Ayarlar</button>
+<button onclick="showTab('status')">Durum</button>
+<button onclick="doLogout()">Cikis</button>
+</nav>
+
+<div id="cards" class="tab active">
+<h2>Kart Yonetimi</h2>
+<div class="form-row">
+<input type="text" id="c_uid" placeholder="UID (ornek: AABBCCDD)" maxlength="8">
+<input type="text" id="c_name" placeholder="Kart sahibi ismi" maxlength="31">
+<button class="btn btn-s" onclick="addCard()">Ekle</button>
+</div>
+<div class="msg" id="c_msg"></div>
+<table>
+<thead><tr><th>UID</th><th>Isim</th><th>Islem</th></tr></thead>
+<tbody id="c_list"></tbody>
+</table>
+</div>
+
+<div id="logs" class="tab">
+<h2>Erisim Loglari</h2>
+<div class="log-dates" id="l_dates"></div>
+<div id="l_info" style="color:#888;font-size:.85rem">Tarih secin</div>
+<div id="l_entries"></div>
+<div style="margin-top:.8rem">
+<button class="btn btn-d" id="l_del" style="display:none" onclick="deleteLog()">Bu Logu Sil</button>
+</div>
+</div>
+
+<div id="config" class="tab">
+<h2>Sistem Ayarlari</h2>
+<h3>Genel Ayarlar</h3>
+<div class="form-row">
+<input type="number" id="cfg_delay" placeholder="Kapi acik suresi (sn)" min="1" max="30">
+</div>
+<div class="form-row">
+<input type="text" id="cfg_ap" placeholder="AP Sifresi (min 8 karakter)">
+</div>
+<div class="form-row">
+<input type="text" id="cfg_ssid" placeholder="WiFi SSID (STA - opsiyonel)">
+</div>
+<div class="form-row">
+<input type="text" id="cfg_wpass" placeholder="WiFi Sifre (STA)">
+</div>
+<button class="btn btn-p" onclick="saveConfig()">Ayarlari Kaydet</button>
+<div class="msg" id="cfg_msg"></div>
+
+<h3>Sifre Degistir</h3>
+<div class="form-row">
+<input type="password" id="pw_old" placeholder="Mevcut sifre">
+</div>
+<div class="form-row">
+<input type="password" id="pw_new" placeholder="Yeni sifre">
+</div>
+<div class="form-row">
+<input type="password" id="pw_confirm" placeholder="Yeni sifre (tekrar)">
+</div>
+<button class="btn btn-p" onclick="changePass()">Sifreyi Degistir</button>
+<div class="msg" id="pw_msg"></div>
+
+<h3>Firmware Guncelleme (OTA)</h3>
+<div class="form-row">
+<input type="file" id="ota_file" accept=".bin">
+</div>
+<div id="ota_progress" style="display:none;margin:.5rem 0">
+<div style="background:#0f3460;border-radius:6px;overflow:hidden;height:24px">
+<div id="ota_bar" style="background:#e94560;height:100%;width:0%;transition:width 0.3s;
+display:flex;align-items:center;justify-content:center;font-size:.8rem;color:#fff;min-width:40px"></div>
+</div>
+</div>
+<button class="btn btn-p" id="ota_btn" onclick="startOta()">Guncellemeyi Baslat</button>
+<div class="msg" id="ota_msg"></div>
+</div>
+
+<div id="status" class="tab">
+<h2>Sistem Durumu</h2>
+<div class="info-grid" id="s_grid"></div>
+<div style="margin-top:1rem;text-align:center">
+<button class="btn btn-p" onclick="loadStatus()">Yenile</button>
+</div>
+</div>
+
+<script>
+var currentLogDate='';
+
+function showTab(name){
+document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+document.querySelectorAll('nav button').forEach(function(b){b.classList.remove('active')});
+document.getElementById(name).classList.add('active');
+document.querySelectorAll('nav button').forEach(function(b){
+if(b.textContent.toLowerCase().indexOf(name.substring(0,4))===0||
+(name==='cards'&&b.textContent==='Kartlar')||
+(name==='logs'&&b.textContent==='Loglar')||
+(name==='config'&&b.textContent==='Ayarlar')||
+(name==='status'&&b.textContent==='Durum'))b.classList.add('active');
+});
+if(name==='cards')loadCards();
+if(name==='logs')loadLogDates();
+if(name==='config')loadConfig();
+if(name==='status')loadStatus();
+}
+
+function showMsg(id,text,ok){
+var el=document.getElementById(id);
+el.textContent=text;el.className='msg '+(ok?'ok':'err');
+setTimeout(function(){el.className='msg';},4000);
+}
+
+async function api(url,opts){
+try{
+var r=await fetch(url,opts||{});
+if(r.status===401){window.location.href='/login';return null;}
+return r;
+}catch(e){return null;}
+}
+
+/* === KARTLAR === */
+async function loadCards(){
+var r=await api('/api/cards');
+if(!r)return;
+var d=await r.json();
+var tb=document.getElementById('c_list');
+tb.innerHTML='';
+if(!d.cards||d.cards.length===0){
+tb.innerHTML='<tr><td colspan="3" style="color:#888">Kayitli kart yok</td></tr>';return;}
+d.cards.forEach(function(c){
+var tr=document.createElement('tr');
+tr.innerHTML='<td>'+c.uid+'</td><td>'+c.name+'</td>'+
+'<td><button class="btn btn-d" onclick="deleteCard(\''+c.uid+'\')">Sil</button></td>';
+tb.appendChild(tr);
+});
+}
+
+async function addCard(){
+var uid=document.getElementById('c_uid').value.trim().toUpperCase();
+var name=document.getElementById('c_name').value.trim();
+if(!uid||!name){showMsg('c_msg','UID ve isim gerekli',false);return;}
+if(uid.length>8){showMsg('c_msg','UID en fazla 8 karakter',false);return;}
+var r=await api('/api/cards',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({uid:uid,name:name})});
+if(!r)return;
+if(r.ok){
+showMsg('c_msg','Kart eklendi',true);
+document.getElementById('c_uid').value='';
+document.getElementById('c_name').value='';
+loadCards();
+}else{var d=await r.json();showMsg('c_msg',d.error||'Hata',false);}
+}
+
+async function deleteCard(uid){
+if(!confirm(uid+' kartini silmek istediginizden emin misiniz?'))return;
+var r=await api('/api/cards?uid='+uid,{method:'DELETE'});
+if(!r)return;
+if(r.ok){showMsg('c_msg','Kart silindi',true);loadCards();}
+else{var d=await r.json();showMsg('c_msg',d.error||'Hata',false);}
+}
+
+/* === LOGLAR === */
+async function loadLogDates(){
+var r=await api('/api/logs/dates');
+if(!r)return;
+var d=await r.json();
+var el=document.getElementById('l_dates');
+el.innerHTML='';
+if(!d.dates||d.dates.length===0){
+el.innerHTML='<span style="color:#888">Log dosyasi yok</span>';return;}
+d.dates.sort().reverse();
+d.dates.forEach(function(dt){
+var b=document.createElement('button');
+b.textContent=dt;
+if(dt===currentLogDate)b.classList.add('active');
+b.onclick=function(){loadLog(dt);};
+el.appendChild(b);
+});
+}
+
+async function loadLog(date){
+currentLogDate=date;
+document.querySelectorAll('.log-dates button').forEach(function(b){
+b.classList.toggle('active',b.textContent===date);});
+var r=await api('/api/logs?date='+date);
+if(!r)return;
+var el=document.getElementById('l_entries');
+var info=document.getElementById('l_info');
+if(r.status===404){info.textContent='Log bulunamadi';el.innerHTML='';
+document.getElementById('l_del').style.display='none';return;}
+var text=await r.text();
+el.innerHTML='';info.textContent=date+' tarihli loglar:';
+var lines=text.trim().split('\n');
+lines.forEach(function(line){
+if(!line.trim())return;
+try{
+var e=JSON.parse(line);
+var d=new Date(e.ts*1000);
+var time=d.toLocaleTimeString('tr-TR');
+var div=document.createElement('div');
+div.className='log-entry';
+var cls=e.result==='OK'?'log-ok':'log-deny';
+div.innerHTML='<span style="color:#888">'+time+'</span> '+
+'<span class="'+cls+'">'+e.result+'</span> '+
+'<strong>'+e.uid+'</strong> '+e.name;
+el.appendChild(div);
+}catch(x){}
+});
+document.getElementById('l_del').style.display='inline-block';
+}
+
+async function deleteLog(){
+if(!currentLogDate)return;
+if(!confirm(currentLogDate+' logunu silmek istediginizden emin misiniz?'))return;
+var r=await api('/api/logs?date='+currentLogDate,{method:'DELETE'});
+if(!r)return;
+if(r.ok){currentLogDate='';document.getElementById('l_entries').innerHTML='';
+document.getElementById('l_del').style.display='none';
+document.getElementById('l_info').textContent='Log silindi';loadLogDates();}
+}
+
+/* === AYARLAR === */
+async function loadConfig(){
+var r=await api('/api/status');
+if(!r)return;
+var d=await r.json();
+if(d.config){
+document.getElementById('cfg_delay').value=d.config.door_delay||3;
+document.getElementById('cfg_ap').value=d.config.ap_pass||'';
+document.getElementById('cfg_ssid').value=d.config.wifi_ssid||'';
+document.getElementById('cfg_wpass').value=d.config.wifi_pass||'';
+}
+}
+
+async function saveConfig(){
+var body={};
+var v=document.getElementById('cfg_delay').value;
+if(v)body.door_delay=parseInt(v);
+v=document.getElementById('cfg_ap').value;
+if(v)body.ap_pass=v;
+v=document.getElementById('cfg_ssid').value;
+body.wifi_ssid=v;
+v=document.getElementById('cfg_wpass').value;
+body.wifi_pass=v;
+var r=await api('/api/config',{method:'POST',
+headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+if(!r)return;
+if(r.ok){showMsg('cfg_msg','Ayarlar kaydedildi',true);}
+else{var d=await r.json();showMsg('cfg_msg',d.error||'Hata',false);}
+}
+
+async function changePass(){
+var o=document.getElementById('pw_old').value;
+var n=document.getElementById('pw_new').value;
+var c=document.getElementById('pw_confirm').value;
+if(!o||!n){showMsg('pw_msg','Tum alanlar gerekli',false);return;}
+if(n!==c){showMsg('pw_msg','Yeni sifreler eslesmiyor',false);return;}
+if(n.length<4){showMsg('pw_msg','Sifre en az 4 karakter olmali',false);return;}
+var r=await api('/api/auth/password',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({current_password:o,new_password:n})});
+if(!r)return;
+if(r.ok){showMsg('pw_msg','Sifre degistirildi, yeniden giris yapin',true);
+setTimeout(function(){window.location.href='/login';},2000);}
+else{var d=await r.json();showMsg('pw_msg',d.error||'Hata',false);}
+}
+
+/* === DURUM === */
+async function loadStatus(){
+var r=await api('/api/status');
+if(!r)return;
+var d=await r.json();
+var g=document.getElementById('s_grid');
+var items=[];
+var up=d.uptime_sec||0;
+var h=Math.floor(up/3600);var m=Math.floor((up%3600)/60);
+items.push({l:'Calisma Suresi',v:h+' saat '+m+' dk'});
+items.push({l:'Bos Bellek',v:Math.round((d.free_heap||0)/1024)+' KB'});
+items.push({l:'WiFi STA',v:d.wifi_sta_connected?(d.wifi_sta_ip||'Bagli'):'Bagli degil'});
+items.push({l:'WiFi AP',v:(d.wifi_ap_ip||'192.168.4.1')+' ('+
+(d.wifi_ap_clients||0)+' istemci)'});
+var fs_t=d.fs_total_kb||0;var fs_u=d.fs_used_kb||0;
+items.push({l:'Depolama',v:fs_u+' / '+fs_t+' KB'});
+items.push({l:'Kayitli Kart',v:''+(d.card_count||0)});
+if(d.firmware){
+items.push({l:'Firmware',v:d.firmware.version||'?'});
+items.push({l:'IDF Versiyon',v:d.firmware.idf_version||'?'});
+items.push({l:'Derleme',v:(d.firmware.compile_date||'')+' '+(d.firmware.compile_time||'')});
+items.push({l:'Aktif Partition',v:d.firmware.running_partition||'?'});
+}
+g.innerHTML='';
+items.forEach(function(it){
+var div=document.createElement('div');
+div.className='info-item';
+div.innerHTML='<div class="label">'+it.l+'</div><div class="value">'+it.v+'</div>';
+g.appendChild(div);
+});
+}
+
+async function doLogout(){
+await fetch('/logout',{method:'POST'});
+window.location.href='/login';
+}
+
+/* === OTA === */
+function startOta(){
+var fileInput=document.getElementById('ota_file');
+if(!fileInput.files||!fileInput.files[0]){
+showMsg('ota_msg','Firmware dosyasi secin (.bin)',false);return;}
+var file=fileInput.files[0];
+if(!file.name.endsWith('.bin')){
+showMsg('ota_msg','Sadece .bin dosyalari kabul edilir',false);return;}
+if(file.size<32768){
+showMsg('ota_msg','Dosya cok kucuk — gecerli bir firmware degil',false);return;}
+if(!confirm('Firmware guncellemesi baslatilacak.\nGuncelleme sirasinda gucu kesmeyin!\n\nDevam edilsin mi?'))return;
+var btn=document.getElementById('ota_btn');
+btn.disabled=true;btn.textContent='Guncelleniyor...';
+var prog=document.getElementById('ota_progress');
+var bar=document.getElementById('ota_bar');
+prog.style.display='block';bar.style.width='0%';bar.textContent='0%';
+var xhr=new XMLHttpRequest();
+xhr.open('POST','/api/ota',true);
+xhr.setRequestHeader('Content-Type','application/octet-stream');
+xhr.upload.onprogress=function(e){
+if(e.lengthComputable){
+var pct=Math.round(e.loaded*100/e.total);
+bar.style.width=pct+'%';bar.textContent=pct+'%';}};
+xhr.onload=function(){
+if(xhr.status===200){
+bar.style.width='100%';bar.textContent='100%';
+showMsg('ota_msg','Guncelleme basarili! Sistem yeniden baslatiliyor...',true);
+btn.textContent='Yeniden baslatiliyor...';
+setTimeout(function(){window.location.reload();},10000);
+}else if(xhr.status===401){
+window.location.href='/login';
+}else{
+try{var d=JSON.parse(xhr.responseText);showMsg('ota_msg',d.error||'Hata',false);}
+catch(x){showMsg('ota_msg','Guncelleme basarisiz',false);}
+btn.disabled=false;btn.textContent='Guncellemeyi Baslat';prog.style.display='none';}};
+xhr.onerror=function(){
+showMsg('ota_msg','Baglanti hatasi',false);
+btn.disabled=false;btn.textContent='Guncellemeyi Baslat';prog.style.display='none';};
+xhr.send(file);
+}
+
+/* Sayfa yuklendiginde kartlari yukle */
+loadCards();
+</script>
+</body>
+</html>

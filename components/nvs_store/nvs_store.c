@@ -263,7 +263,7 @@ esp_err_t nvs_store_card_list(card_entry_t *out, size_t *count)
 
     /* NVS iterator ile tum key'leri tara */
     nvs_iterator_t it = NULL;
-    ret = nvs_entry_find(NVS_NS_CARDS, NVS_NS_CARDS, NVS_TYPE_STR, &it);
+    ret = nvs_entry_find("nvs", NVS_NS_CARDS, NVS_TYPE_STR, &it);
 
     size_t max_count = *count;
     size_t found = 0;

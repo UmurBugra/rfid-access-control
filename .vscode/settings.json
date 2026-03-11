@@ -13,5 +13,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=d:\\dev\\ESP-IDF\\kapi\\build"
-  ]
+  ],
+  "idf.flashType": "UART"
 }

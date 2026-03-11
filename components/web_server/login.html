@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>KAPI Sistemi - Giris</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#1a1a2e;color:#eee;
+display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{background:#16213e;padding:2rem;border-radius:12px;width:320px}
+h1{text-align:center;margin-bottom:1.5rem;font-size:1.3rem}
+input{width:100%;padding:.7rem;margin-bottom:1rem;border:1px solid #333;
+border-radius:6px;background:#0f3460;color:#eee;font-size:1rem}
+input::placeholder{color:#888}
+button{width:100%;padding:.7rem;background:#e94560;color:#fff;border:none;
+border-radius:6px;font-size:1rem;cursor:pointer}
+button:hover{background:#c73e54}
+.err{color:#e94560;text-align:center;margin-top:.5rem;display:none;font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>KAPI Sistemi</h1>
+<form id="f">
+<input type="text" id="u" placeholder="Kullanici adi" required autocomplete="username">
+<input type="password" id="p" placeholder="Sifre" required autocomplete="current-password">
+<button type="submit">Giris</button>
+</form>
+<div class="err" id="e"></div>
+</div>
+<script>
+document.getElementById('f').addEventListener('submit',async function(ev){
+ev.preventDefault();
+var el=document.getElementById('e');
+el.style.display='none';
+try{
+var r=await fetch('/login',{method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({username:document.getElementById('u').value,
+password:document.getElementById('p').value})});
+if(r.ok){window.location.href='/';}
+else{var d=await r.json();el.textContent=d.error||'Giris basarisiz';el.style.display='block';}
+}catch(x){el.textContent='Baglanti hatasi';el.style.display='block';}
+});
+</script>
+</body>
+</html>
