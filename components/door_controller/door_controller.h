@@ -24,7 +24,7 @@ extern "C" {
  * @brief Door controller componentini baslatir
  *
  * - LittleFS'i "storage" partition uzerine mount eder
- * - GPIO yapilandirir (26 = kapi/yesil LED, 14 = kirmizi LED)
+ * - GPIO yapilandirir (26 = role tetikleme, 14 = kirmizi LED)
  * - door_task olusturur (oncelik 4, Core 0)
  * - Eski loglari temizler (14 gun)
  *

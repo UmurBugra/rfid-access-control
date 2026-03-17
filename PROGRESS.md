@@ -123,6 +123,7 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 - Log depolama: LittleFS (NVS write cycle ömrü için)
 - Auth: Tek süper admin, SHA-256 + session token, 24 saat expiry
 - Prototip: BJT NPN transistör (röle henüz yok), LED ile simülasyon
+- **2026-03-12: BJT → Röle geçişi yapıldı.** GPIO 26 artık doğrudan 5V röle modülünü tetikliyor (HIGH = aktif). Yeşil LED yazılımdan bağımsız olarak röle NO kontağı üzerinden yanıyor. Kırmızı LED (GPIO 14) değişiklik yok, doğrudan ESP'den sürülüyor.
 - Buzzer: Kullanılmayacak, tasarımdan çıkarıldı
 - Partition tablosu düzeltildi: orijinal tablo 4MB flash'ı 64KB aşıyordu.
   OTA slotları 1920KB→1856KB küçültüldü, storage 256KB korundu, 64KB güvenlik payı bırakıldı.

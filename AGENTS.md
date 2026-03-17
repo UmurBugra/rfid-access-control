@@ -20,9 +20,9 @@ Her yeni oturumda bu dosyayı oku ve ona göre davran.
 |---|---|
 | MCU | ESP32 (dual-core, 240MHz, 4MB flash) |
 | RFID Okuyucu | RC522 — SPI (VSPI) |
-| Anahtarlama | BJT NPN transistör (prototip) → ileride röle + kapı kilidi |
-| Yeşil LED | Kapı açık göstergesi — BJT Collector üzerinden |
-| Kırmızı LED | Erişim reddedildi — doğrudan GPIO |
+| Röle | 5V röle modülü (HL-51 V1.0) — GPIO 27, 3.3V besleme, aktif-LOW |
+| Yeşil LED | Kapı açık göstergesi — Röle NO kontağı üzerinden (3.3V → direnç → LED → GND) |
+| Kırmızı LED | Erişim reddedildi — doğrudan GPIO 14 |
 
 ### Pin Haritası
 
@@ -33,15 +33,18 @@ Her yeni oturumda bu dosyayı oku ve ona göre davran.
 | RC522 MOSI | 23 |
 | RC522 MISO | 19 |
 | RC522 RST | 22 |
-| Anahtarlama (BJT base) | 26 |
+| Röle tetikleme (IN) | 26 |
 | Kırmızı LED | 14 |
 
-**Prototip devre:**
+**Röle devre bağlantısı:**
 ```
-3.3V → [220Ω] → LED(+) → LED(−) → BJT Collector → BJT Emitter → GND
-GPIO 26 → [1kΩ] → BJT Base
+Röle VCC  → ESP 3.3V
+Röle GND  → ESP GND
+Röle IN   → GPIO 26 (LOW = tetikle)
+Röle COM  → ESP 3.3V
+Röle NO   → [direnç] → Yeşil LED(+) → LED(−) → ESP GND
 ```
-**Röle geldiğinde:** LED yerine röle bobini + paralel 1N4007 flyback diyot. Yazılım değişmez.
+Röle tetiklendiğinde NO kontağı kapanır, 3.3V → direnç → yeşil LED → GND devresi tamamlanır.
 
 ---
 

@@ -12,7 +12,7 @@ extern "C" {
 /**
  * @brief Wi-Fi AP varsayilan ayarlar
  */
-#define WIFI_AP_SSID            "KAPI-SISTEMI"
+#define WIFI_AP_SSID            "KAPI-SISTEMI-v1.1"
 #define WIFI_AP_CHANNEL         1
 #define WIFI_AP_MAX_CONN        4
 

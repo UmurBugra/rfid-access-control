@@ -21,7 +21,7 @@ static const char *TAG = "door_ctrl";
  * ============================================================ */
 
 /* GPIO pin tanimlari (AGENTS.md) */
-#define GPIO_DOOR_OPEN      GPIO_NUM_26     /* BJT base — kapi ac / yesil LED */
+#define GPIO_RELAY          GPIO_NUM_26     /* Role tetikleme (LOW = aktif) */
 #define GPIO_RED_LED        GPIO_NUM_14     /* Kirmizi LED — erisim reddedildi */
 
 /* LittleFS yapilandirmasi */
@@ -112,8 +112,8 @@ esp_err_t door_controller_init(QueueHandle_t rfid_queue)
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(TAG, "Door controller baslatildi (DOOR_GPIO=%d, RED_LED=%d)",
-             GPIO_DOOR_OPEN, GPIO_RED_LED);
+    ESP_LOGI(TAG, "Door controller baslatildi (RELAY_GPIO=%d, RED_LED=%d)",
+             GPIO_RELAY, GPIO_RED_LED);
 
     return ESP_OK;
 }
@@ -252,16 +252,20 @@ static esp_err_t mount_littlefs(void)
 
 static void init_gpio(void)
 {
-    /* GPIO 26 — BJT base / kapi acma (cikis, baslangicta LOW) */
+    /* GPIO 26 — Role tetikleme (aktif-LOW)
+     * ONCE HIGH yap (role kapali), SONRA output olarak yapilandir. */
+    gpio_set_level(GPIO_RELAY, 1);
     gpio_config_t door_conf = {
-        .pin_bit_mask = (1ULL << GPIO_DOOR_OPEN),
+        .pin_bit_mask = (1ULL << GPIO_RELAY),
         .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&door_conf));
-    gpio_set_level(GPIO_DOOR_OPEN, 0);
+    gpio_set_level(GPIO_RELAY, 1);
+
+    ESP_LOGI(TAG, "GPIO %d HIGH yapildi (role kapali)", GPIO_RELAY);
 
     /* GPIO 14 — Kirmizi LED (cikis, baslangicta LOW) */
     gpio_config_t red_conf = {
@@ -437,8 +441,8 @@ static void door_task(void *arg)
                 /* ============== ERISIM VERILDI ============== */
                 ESP_LOGI(TAG, "ERISIM VERILDI — %s (%s)", name, evt.uid_hex);
 
-                /* Kapi ac (yesil LED / BJT) */
-                gpio_set_level(GPIO_DOOR_OPEN, 1);
+                /* Roleyi tetikle — kapi ac (LOW = aktif) */
+                gpio_set_level(GPIO_RELAY, 0);
 
                 /* Log yaz */
                 write_log_entry(evt.uid_hex, name, "OK");
@@ -448,8 +452,8 @@ static void door_task(void *arg)
                 nvs_store_config_get_door_delay(&delay_sec);
                 vTaskDelay(pdMS_TO_TICKS(delay_sec * 1000));
 
-                /* Kapi kapat */
-                gpio_set_level(GPIO_DOOR_OPEN, 0);
+                /* Roleyi birak — kapi kapat (HIGH = role kapali) */
+                gpio_set_level(GPIO_RELAY, 1);
 
             } else {
                 /* ============== ERISIM REDDEDILDI ============== */
