@@ -21,8 +21,8 @@ static const char *TAG = "door_ctrl";
  * ============================================================ */
 
 /* GPIO pin tanimlari (AGENTS.md) */
-#define GPIO_RELAY          GPIO_NUM_26     /* Role tetikleme (LOW = aktif) */
-#define GPIO_RED_LED        GPIO_NUM_14     /* Kirmizi LED — erisim reddedildi */
+#define GPIO_RELAY          GPIO_NUM_16     /* MOSFET tetikleme (HIGH = aktif) */
+#define GPIO_RED_LED        GPIO_NUM_14     /* Kirmizi LED — surekli yanik, erisim verilince soner */
 
 /* LittleFS yapilandirmasi */
 #define STORAGE_PARTITION   "storage"
@@ -112,7 +112,7 @@ esp_err_t door_controller_init(QueueHandle_t rfid_queue)
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(TAG, "Door controller baslatildi (RELAY_GPIO=%d, RED_LED=%d)",
+    ESP_LOGI(TAG, "Door controller baslatildi (MOSFET_GPIO=%d aktif-HIGH, RED_LED=%d surekli yanik)",
              GPIO_RELAY, GPIO_RED_LED);
 
     return ESP_OK;
@@ -252,22 +252,22 @@ static esp_err_t mount_littlefs(void)
 
 static void init_gpio(void)
 {
-    /* GPIO 26 — Role tetikleme (aktif-LOW)
-     * ONCE HIGH yap (role kapali), SONRA output olarak yapilandir. */
-    gpio_set_level(GPIO_RELAY, 1);
+    /* GPIO 16 — MOSFET tetikleme (aktif-HIGH)
+     * ONCE LOW yap (MOSFET kapali), SONRA output olarak yapilandir. */
+    gpio_set_level(GPIO_RELAY, 0);
     gpio_config_t door_conf = {
         .pin_bit_mask = (1ULL << GPIO_RELAY),
         .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&door_conf));
-    gpio_set_level(GPIO_RELAY, 1);
+    gpio_set_level(GPIO_RELAY, 0);
 
-    ESP_LOGI(TAG, "GPIO %d HIGH yapildi (role kapali)", GPIO_RELAY);
+    ESP_LOGI(TAG, "GPIO %d LOW yapildi (MOSFET kapali)", GPIO_RELAY);
 
-    /* GPIO 14 — Kirmizi LED (cikis, baslangicta LOW) */
+    /* GPIO 14 — Kirmizi LED (cikis, baslangicta HIGH — surekli yanik) */
     gpio_config_t red_conf = {
         .pin_bit_mask = (1ULL << GPIO_RED_LED),
         .mode = GPIO_MODE_OUTPUT,
@@ -276,7 +276,7 @@ static void init_gpio(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&red_conf));
-    gpio_set_level(GPIO_RED_LED, 0);
+    gpio_set_level(GPIO_RED_LED, 1);
 
     ESP_LOGI(TAG, "GPIO yapilandirildi");
 }
@@ -441,8 +441,11 @@ static void door_task(void *arg)
                 /* ============== ERISIM VERILDI ============== */
                 ESP_LOGI(TAG, "ERISIM VERILDI — %s (%s)", name, evt.uid_hex);
 
-                /* Roleyi tetikle — kapi ac (LOW = aktif) */
-                gpio_set_level(GPIO_RELAY, 0);
+                /* Kirmizi LED sondir (erisim gostergesi) */
+                gpio_set_level(GPIO_RED_LED, 0);
+
+                /* MOSFET tetikle — kapi ac (HIGH = aktif) */
+                gpio_set_level(GPIO_RELAY, 1);
 
                 /* Log yaz */
                 write_log_entry(evt.uid_hex, name, "OK");
@@ -452,22 +455,20 @@ static void door_task(void *arg)
                 nvs_store_config_get_door_delay(&delay_sec);
                 vTaskDelay(pdMS_TO_TICKS(delay_sec * 1000));
 
-                /* Roleyi birak — kapi kapat (HIGH = role kapali) */
-                gpio_set_level(GPIO_RELAY, 1);
+                /* MOSFET kapat — kapi kapat (LOW = kapali) */
+                gpio_set_level(GPIO_RELAY, 0);
+
+                /* Kirmizi LED tekrar yak (standby durumu) */
+                gpio_set_level(GPIO_RED_LED, 1);
 
             } else {
                 /* ============== ERISIM REDDEDILDI ============== */
                 ESP_LOGW(TAG, "ERISIM REDDEDILDI — Bilinmeyen kart: %s", evt.uid_hex);
 
-                /* Kirmizi LED yak */
-                gpio_set_level(GPIO_RED_LED, 1);
+                /* Kirmizi LED zaten surekli yanik — ek islem yok */
 
                 /* Log yaz */
                 write_log_entry(evt.uid_hex, name, "DENY");
-
-                /* 1 saniye bekle, sonra sondir */
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                gpio_set_level(GPIO_RED_LED, 0);
             }
         }
 

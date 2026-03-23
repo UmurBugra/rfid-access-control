@@ -20,9 +20,9 @@ Her yeni oturumda bu dosyayı oku ve ona göre davran.
 |---|---|
 | MCU | ESP32 (dual-core, 240MHz, 4MB flash) |
 | RFID Okuyucu | RC522 — SPI (VSPI) |
-| Röle | 5V röle modülü (HL-51 V1.0) — GPIO 27, 3.3V besleme, aktif-LOW |
-| Yeşil LED | Kapı açık göstergesi — Röle NO kontağı üzerinden (3.3V → direnç → LED → GND) |
-| Kırmızı LED | Erişim reddedildi — doğrudan GPIO 14 |
+| MOSFET | N-kanal MOSFET — GPIO 16, aktif-HIGH |
+| Yeşil LED | Kapı açık göstergesi — MOSFET çıkışı üzerinden |
+| Kırmızı LED | Sürekli yanık (standby), erişim verilince söner — doğrudan GPIO 14 |
 
 ### Pin Haritası
 
@@ -33,18 +33,18 @@ Her yeni oturumda bu dosyayı oku ve ona göre davran.
 | RC522 MOSI | 23 |
 | RC522 MISO | 19 |
 | RC522 RST | 22 |
-| Röle tetikleme (IN) | 26 |
+| Röle tetikleme (IN) | 16 |
 | Kırmızı LED | 14 |
 
-**Röle devre bağlantısı:**
+**MOSFET devre bağlantısı:**
 ```
-Röle VCC  → ESP 3.3V
-Röle GND  → ESP GND
-Röle IN   → GPIO 26 (LOW = tetikle)
-Röle COM  → ESP 3.3V
-Röle NO   → [direnç] → Yeşil LED(+) → LED(−) → ESP GND
+ESP GPIO 16     → MOSFET Gate (direnç ile)
+MOSFET Drain    → Yeşil LED(+) → [direnç] → VCC
+MOSFET Source   → GND
 ```
-Röle tetiklendiğinde NO kontağı kapanır, 3.3V → direnç → yeşil LED → GND devresi tamamlanır.
+GPIO 16 HIGH olduğunda MOSFET iletime geçer, yeşil LED yanar.
+
+Kırmızı LED doğrudan GPIO 14'ten sürülür. Sistem açıldığında sürekli yanık kalır (standby göstergesi). Erişim verildiğinde söner, kapı kapandığında tekrar yanar.
 
 ---
 

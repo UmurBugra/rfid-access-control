@@ -31,7 +31,8 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 
 **Faz 1 tamamlanma kriteri:**
 - [ ] Kart okutunca yeşil LED 3 sn yanıyor
-- [ ] Yetkisiz kartta kırmızı LED yanıyor
+- [ ] Yetkisiz kartta kırmızı LED sürekli yanık kalıyor (değişiklik yok)
+- [ ] Yetkili kartta kırmızı LED söner, yeşil LED yanar
 - [ ] Log dosyası LittleFS'e yazılıyor
 - [ ] `idf.py build` hatasız tamamlanıyor
 
@@ -97,7 +98,7 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 | 5.1 | Şematik tasarım (röle, güç, RC522, ESP32) | ⬜ Bekliyor | — |
 | 5.2 | PCB layout | ⬜ Bekliyor | — |
 | 5.3 | Gerber üretim + montaj | ⬜ Bekliyor | — |
-| 5.4 | Röle ile yazılım testi (GPIO 26 yük değişimi) | ⬜ Bekliyor | — |
+| 5.4 | Röle ile yazılım testi (GPIO 16 yük değişimi) | ⬜ Bekliyor | — |
 | 5.5 | Gerçek kapı kilidi entegrasyonu | ⬜ Bekliyor | — |
 
 ---
@@ -123,7 +124,7 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 - Log depolama: LittleFS (NVS write cycle ömrü için)
 - Auth: Tek süper admin, SHA-256 + session token, 24 saat expiry
 - Prototip: BJT NPN transistör (röle henüz yok), LED ile simülasyon
-- **2026-03-12: BJT → Röle geçişi yapıldı.** GPIO 26 artık doğrudan 5V röle modülünü tetikliyor (HIGH = aktif). Yeşil LED yazılımdan bağımsız olarak röle NO kontağı üzerinden yanıyor. Kırmızı LED (GPIO 14) değişiklik yok, doğrudan ESP'den sürülüyor.
+- **2026-03-12: BJT → Röle geçişi yapıldı.** GPIO 16 artık doğrudan 5V röle modülünü tetikliyor (HIGH = aktif). Yeşil LED yazılımdan bağımsız olarak röle NO kontağı üzerinden yanıyor. Kırmızı LED (GPIO 14) değişiklik yok, doğrudan ESP'den sürülüyor.
 - Buzzer: Kullanılmayacak, tasarımdan çıkarıldı
 - Partition tablosu düzeltildi: orijinal tablo 4MB flash'ı 64KB aşıyordu.
   OTA slotları 1920KB→1856KB küçültüldü, storage 256KB korundu, 64KB güvenlik payı bırakıldı.
@@ -133,7 +134,7 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 - main.c'de nvs_flash_init() + nvs_store_init() cagriliyor
 - Asama 3 tamamlandi: auth_manager component — SHA-256 sifre hash (mbedtls), fabrika varsayilani admin/admin1234, 32 byte session token (esp_random), 24 saat expiry, sifre degistirme + token invalidation, mutex korumali
 - Asama 4 tamamlandi: rfid_manager component — abobija/rc522 v3.4 kutuphane, SPI3_HOST, event-driven (PICC state changed), UID 4-byte hex string cevirme, FreeRTOS Queue ile door_task'a gonderim. main.c'de gecici rfid_listener_task var (door_controller gelince kaldirilacak)
-- Asama 5 tamamlandi: door_controller component — LittleFS mount (storage partition), GPIO init (26=BJT/kapi, 14=kirmizi LED), door_task (Queue dinle, yetki kontrol, kapi ac/kapat, log yaz), JSON log dosyalari (/littlefs/logs/YYYY-MM-DD.log), 14 gun eski log temizligi, web_server icin log okuma/silme/listeleme API. main.c'den gecici rfid_listener_task kaldirildi, door_controller_init(rfid_queue) eklendi. joltwallet/littlefs bagimliligi idf_component.yml ile eklendi.
+- Asama 5 tamamlandi: door_controller component — LittleFS mount (storage partition), GPIO init (16=BJT/kapi, 14=kirmizi LED), door_task (Queue dinle, yetki kontrol, kapi ac/kapat, log yaz), JSON log dosyalari (/littlefs/logs/YYYY-MM-DD.log), 14 gun eski log temizligi, web_server icin log okuma/silme/listeleme API. main.c'den gecici rfid_listener_task kaldirildi, door_controller_init(rfid_queue) eklendi. joltwallet/littlefs bagimliligi idf_component.yml ile eklendi.
 - Asama 6 tamamlandi: wifi_manager component — WIFI_MODE_APSTA (AP+STA ayni anda), AP SSID "KAPI-SISTEMI" sifre NVS'ten (ap_pass), STA opsiyonel (NVS'te wifi_ssid varsa baglan), event-driven (baglanti/kopma/IP), exponential backoff ile STA yeniden baglanti (5s-60s), reconfigure fonksiyonu (web panelinden config degisince Wi-Fi yeniden baslatma), durum sorgulama (STA IP, AP IP, bagli istemci sayisi).
 
 - Asama 7 kodu yazildi ve build dogrulandi: web_server component — esp_http_server (port 80, max 16 handler, stack 8192), 13 URI handler, session cookie middleware, cJSON ile JSON parsing/generation, embedded HTML (login.html + dashboard.html via EMBED_TXTFILES). Korumasiz endpointler: GET/POST /login, POST /logout. Korumali endpointler: GET / (dashboard), GET/POST/DELETE /api/cards, GET/DELETE /api/logs, GET /api/logs/dates, GET /api/status, POST /api/config, POST /api/auth/password. Build hatalari: esp_timer REQUIRES eksikti (eklendi), ESP_ERR_NVS_NOT_FOUND icin nvs_flash.h include eksikti (eklendi).
@@ -145,6 +146,12 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
   2. BUG: web_server.c — cards_post_handler'da cJSON_Delete(json) sonrasi j_uid->valuestring'e erisiliyordu (use-after-free). Log satiri cJSON_Delete'den once tasinarak duzeltildi.
   3. IMPROVE: door_controller.c — door_task stack boyutu 4096→6144 arttirildi. cleanup_old_logs() icindeki DIR*, struct dirent, filepath[280] vb. icin guvenli headroom saglandi.
   Init sirasi dogrulandi: nvs_flash → ota_manager → nvs_store → auth_manager → wifi_manager → queue → rfid → door → web_server. Build dogrulandi.
+
+### 2026-03-17
+- **Röle → MOSFET geçişi yapıldı.** GPIO 16 artık N-kanal MOSFET'i süriyor (aktif-HIGH). Röle aktif-LOW mantığı tamamen kaldırıldı.
+- **Kırmızı LED davranışı değişti:** Artık erişim reddinde yanmıyor. Sistem açıldığında sürekli yanık (standby). Erişim verildiğinde söner, door_delay boyunca MOSFET tetikli (yeşil LED yanar), süre bitince kırmızı LED tekrar yanar.
+- GPIO init: pull-up kaldırıldı → pull-down eklendi (MOSFET gate güvenliği). Başlangıç seviyesi LOW.
+- AGENTS.md donanım tablosu ve devre bağlantısı MOSFET olarak güncellendi.
 
 ---
 
