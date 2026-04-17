@@ -139,6 +139,7 @@ Her satır bağımsız JSON objesi (array değil):
 - `GET  /api/status` — sistem durumu
 - `POST /api/config` — ayar güncelleme
 - `POST /api/auth/password` — şifre değiştirme
+- `POST /api/door/open` — manuel kapı açma (GPIO tetikleme + log)
 - `POST /api/ota` — OTA güncelleme
 
 ---

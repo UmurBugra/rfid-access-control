@@ -43,6 +43,7 @@ static const char *TAG = "door_ctrl";
  * ============================================================ */
 static QueueHandle_t s_rfid_queue = NULL;
 static SemaphoreHandle_t s_fs_mutex = NULL;
+static volatile bool s_door_open = false;  /* Kapiyi acik mi (concurrent guard) */
 
 /* ============================================================
  * Dahili fonksiyon bildirimleri
@@ -217,6 +218,44 @@ esp_err_t door_controller_delete_log(const char *date)
 esp_err_t door_controller_get_fs_info(size_t *total_bytes, size_t *used_bytes)
 {
     return esp_littlefs_info(STORAGE_PARTITION, total_bytes, used_bytes);
+}
+
+esp_err_t door_controller_trigger_open(void)
+{
+    /* Concurrent guard — kapi zaten aciksa tekrar tetikleme */
+    if (s_door_open) {
+        ESP_LOGW(TAG, "Manuel acma reddedildi — kapi zaten acik");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_door_open = true;
+
+    ESP_LOGI(TAG, "MANUEL KAPI ACMA — Web panelinden tetiklendi");
+
+    /* Kirmizi LED sondir (erisim gostergesi) */
+    gpio_set_level(GPIO_RED_LED, 0);
+
+    /* MOSFET tetikle — kapi ac (HIGH = aktif) */
+    gpio_set_level(GPIO_RELAY, 1);
+
+    /* Log yaz — kaynak: WEB */
+    write_log_entry("WEB", "Admin", "OK");
+
+    /* door_delay kadar bekle */
+    uint16_t delay_sec = 3;  /* varsayilan */
+    nvs_store_config_get_door_delay(&delay_sec);
+    vTaskDelay(pdMS_TO_TICKS(delay_sec * 1000));
+
+    /* MOSFET kapat — kapi kapat (LOW = kapali) */
+    gpio_set_level(GPIO_RELAY, 0);
+
+    /* Kirmizi LED tekrar yak (standby durumu) */
+    gpio_set_level(GPIO_RED_LED, 1);
+
+    s_door_open = false;
+
+    ESP_LOGI(TAG, "Manuel kapi acma tamamlandi");
+    return ESP_OK;
 }
 
 /* ============================================================
@@ -441,25 +480,35 @@ static void door_task(void *arg)
                 /* ============== ERISIM VERILDI ============== */
                 ESP_LOGI(TAG, "ERISIM VERILDI — %s (%s)", name, evt.uid_hex);
 
-                /* Kirmizi LED sondir (erisim gostergesi) */
-                gpio_set_level(GPIO_RED_LED, 0);
+                /* Kapi zaten aciksa (web tetiklemesi ile) tekrar tetikleme */
+                if (s_door_open) {
+                    ESP_LOGW(TAG, "Kapi zaten acik — RFID tetiklemesi atlandi");
+                    write_log_entry(evt.uid_hex, name, "OK");
+                } else {
+                    s_door_open = true;
 
-                /* MOSFET tetikle — kapi ac (HIGH = aktif) */
-                gpio_set_level(GPIO_RELAY, 1);
+                    /* Kirmizi LED sondir (erisim gostergesi) */
+                    gpio_set_level(GPIO_RED_LED, 0);
 
-                /* Log yaz */
-                write_log_entry(evt.uid_hex, name, "OK");
+                    /* MOSFET tetikle — kapi ac (HIGH = aktif) */
+                    gpio_set_level(GPIO_RELAY, 1);
 
-                /* door_delay kadar bekle */
-                uint16_t delay_sec = 3;  /* varsayilan */
-                nvs_store_config_get_door_delay(&delay_sec);
-                vTaskDelay(pdMS_TO_TICKS(delay_sec * 1000));
+                    /* Log yaz */
+                    write_log_entry(evt.uid_hex, name, "OK");
 
-                /* MOSFET kapat — kapi kapat (LOW = kapali) */
-                gpio_set_level(GPIO_RELAY, 0);
+                    /* door_delay kadar bekle */
+                    uint16_t delay_sec = 3;  /* varsayilan */
+                    nvs_store_config_get_door_delay(&delay_sec);
+                    vTaskDelay(pdMS_TO_TICKS(delay_sec * 1000));
 
-                /* Kirmizi LED tekrar yak (standby durumu) */
-                gpio_set_level(GPIO_RED_LED, 1);
+                    /* MOSFET kapat — kapi kapat (LOW = kapali) */
+                    gpio_set_level(GPIO_RELAY, 0);
+
+                    /* Kirmizi LED tekrar yak (standby durumu) */
+                    gpio_set_level(GPIO_RED_LED, 1);
+
+                    s_door_open = false;
+                }
 
             } else {
                 /* ============== ERISIM REDDEDILDI ============== */

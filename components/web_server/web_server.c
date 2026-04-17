@@ -29,7 +29,7 @@ extern const char dashboard_html_start[] asm("_binary_dashboard_html_start");
  * ============================================================ */
 #define MAX_BODY_SIZE       512     /* POST body maks boyut */
 #define LOG_READ_BUF_SIZE   8192   /* Log okuma buffer boyutu */
-#define MAX_URI_HANDLERS    18
+#define MAX_URI_HANDLERS    20
 
 /* ============================================================
  * Modul degiskenleri
@@ -764,6 +764,35 @@ static esp_err_t time_post_handler(httpd_req_t *req)
 }
 
 /* ============================================================
+ * POST /api/door/open — Manuel kapi acma (korumali)
+ * ============================================================ */
+static esp_err_t door_open_post_handler(httpd_req_t *req)
+{
+    if (!validate_session(req)) {
+        return send_unauthorized(req);
+    }
+
+    esp_err_t ret = door_controller_trigger_open();
+
+    httpd_resp_set_type(req, "application/json");
+
+    if (ret == ESP_ERR_INVALID_STATE) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_sendstr(req, "{\"error\":\"Kapi zaten acik\"}");
+        return ESP_OK;
+    }
+
+    if (ret != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"error\":\"Kapi acilamadi\"}");
+        return ESP_OK;
+    }
+
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}
+
+/* ============================================================
  * POST /api/ota — OTA firmware guncelleme (korumali, streaming)
  * ============================================================ */
 #define OTA_BUF_SIZE 1024
@@ -917,6 +946,9 @@ static const httpd_uri_t uri_ota_post = {
 static const httpd_uri_t uri_time_post = {
     .uri = "/api/time", .method = HTTP_POST, .handler = time_post_handler
 };
+static const httpd_uri_t uri_door_open_post = {
+    .uri = "/api/door/open", .method = HTTP_POST, .handler = door_open_post_handler
+};
 
 /* ============================================================
  * Public API
@@ -954,8 +986,9 @@ esp_err_t web_server_init(void)
     httpd_register_uri_handler(s_server, &uri_password_post);
     httpd_register_uri_handler(s_server, &uri_ota_post);
     httpd_register_uri_handler(s_server, &uri_time_post);
+    httpd_register_uri_handler(s_server, &uri_door_open_post);
 
-    ESP_LOGI(TAG, "HTTP server baslatildi — 15 endpoint kayitli");
+    ESP_LOGI(TAG, "HTTP server baslatildi — 16 endpoint kayitli");
     return ESP_OK;
 }
 

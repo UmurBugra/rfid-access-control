@@ -55,6 +55,14 @@ background:#0f3460;color:#ccc;cursor:pointer;font-size:.8rem}
 .modal h3{margin-bottom:1rem;font-size:1rem;color:#e94560}
 .modal input{width:100%;padding:.5rem;border:1px solid #333;border-radius:6px;background:#0f3460;color:#eee;font-size:.9rem;margin-bottom:.8rem;box-sizing:border-box}
 .modal .modal-btns{display:flex;gap:.5rem;justify-content:flex-end}
+.btn-door{background:linear-gradient(135deg,#27ae60,#2ecc71)!important;color:#fff!important;
+font-weight:bold;font-size:.9rem!important;padding:.5rem 1.2rem!important;
+box-shadow:0 2px 8px rgba(46,204,113,.3);transition:all .2s}
+.btn-door:hover{background:linear-gradient(135deg,#219a52,#27ae60)!important;
+box-shadow:0 4px 12px rgba(46,204,113,.5);transform:translateY(-1px)}
+.btn-door:disabled{opacity:.6;cursor:not-allowed;transform:none;
+box-shadow:none;animation:door-pulse 1s infinite}
+@keyframes door-pulse{0%,100%{opacity:.6}50%{opacity:.9}}
 @media(max-width:480px){.info-grid{grid-template-columns:1fr}.form-row{flex-direction:column}}
 </style>
 </head>
@@ -64,6 +72,7 @@ background:#0f3460;color:#ccc;cursor:pointer;font-size:.8rem}
 <button onclick="showTab('logs')">Loglar</button>
 <button onclick="showTab('config')">Ayarlar</button>
 <button onclick="showTab('status')">Durum</button>
+<button class="btn-door" id="door_btn" onclick="openDoor()">&#128275; Kapiyi Ac</button>
 <button onclick="doLogout()">Cikis</button>
 </nav>
 
@@ -452,6 +461,29 @@ var r=await api('/api/time',{method:'POST',
 headers:{'Content-Type':'application/json'},
 body:JSON.stringify({timestamp:ts})});
 if(r&&r.ok){console.log('Saat senkronize edildi');}
+}
+
+/* === KAPI AC === */
+async function openDoor(){
+var btn=document.getElementById('door_btn');
+if(btn.disabled)return;
+btn.disabled=true;var origText=btn.innerHTML;
+btn.innerHTML='&#9203; Kapi aciliyor...';
+try{
+var r=await api('/api/door/open',{method:'POST'});
+if(!r){btn.disabled=false;btn.innerHTML=origText;return;}
+if(r.ok){
+btn.innerHTML='&#9989; Kapi acildi!';
+setTimeout(function(){btn.disabled=false;btn.innerHTML=origText;},1500);
+}else{
+var d=await r.json();
+alert(d.error||'Kapi acilamadi');
+btn.disabled=false;btn.innerHTML=origText;
+}
+}catch(e){
+alert('Baglanti hatasi');
+btn.disabled=false;btn.innerHTML=origText;
+}
 }
 
 /* Sayfa yuklendiginde kartlari yukle ve saati senkronize et */

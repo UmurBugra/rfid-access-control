@@ -75,6 +75,21 @@ esp_err_t door_controller_delete_log(const char *date);
  */
 esp_err_t door_controller_get_fs_info(size_t *total_bytes, size_t *used_bytes);
 
+/**
+ * @brief Web panelinden manuel kapi acma
+ *
+ * Admin oturumu dogrulanmis kullanici icin dogrudan kapıyı acar.
+ * RFID Queue ve NVS kart kontrolu bypass edilir.
+ * GPIO 16 (MOSFET) tetiklenir, log yazilir (kaynak: "WEB").
+ * door_delay kadar bekledikten sonra kapi kapatilir.
+ *
+ * NOT: Bu fonksiyon door_delay suresi kadar BLOKLAYICI calisir.
+ * Cagiran task'in bu sureye toleransi olmali.
+ *
+ * @return ESP_OK basarili, ESP_ERR_INVALID_STATE kapi zaten acik
+ */
+esp_err_t door_controller_trigger_open(void);
+
 #ifdef __cplusplus
 }
 #endif

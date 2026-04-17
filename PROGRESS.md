@@ -153,6 +153,14 @@ Genel ilerleme   : %100 (yazılım geliştirme tamamlandı)
 - GPIO init: pull-up kaldırıldı → pull-down eklendi (MOSFET gate güvenliği). Başlangıç seviyesi LOW.
 - AGENTS.md donanım tablosu ve devre bağlantısı MOSFET olarak güncellendi.
 
+### 2026-04-12
+- **Web panelinden manuel kapı açma özelliği eklendi.**
+  - `door_controller.h/c` → `door_controller_trigger_open()` fonksiyonu: GPIO doğrudan tetikleme + log (UID: "WEB", isim: "Admin")
+  - `web_server.c` → `POST /api/door/open` endpoint (korumali, session doğrulamalı)
+  - `dashboard.html` → Navigasyon çubuğuna yeşil "Kapıyı Aç" butonu (gradient, hover efekti, yükleme animasyonu)
+  - Concurrent guard: `s_door_open` volatile flag ile hem RFID hem web tetiklemesi çakışması engellendi
+  - AGENTS.md REST API tablosu güncellendi
+
 ---
 
 ## Bilinen Sorunlar / Engeller
