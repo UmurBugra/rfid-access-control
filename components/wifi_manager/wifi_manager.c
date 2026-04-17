@@ -6,12 +6,16 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "mdns.h"
 #include "esp_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "nvs_store.h"
 
 static const char *TAG = "wifi_mgr";
+
+/* mDNS hostname — simcleverkapi.local */
+#define MDNS_HOSTNAME   "simcleverkapi"
 
 /* ============================================================
  * Event group bitleri
@@ -39,6 +43,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base,
 static esp_err_t configure_ap(void);
 static esp_err_t configure_sta(void);
 static void start_sntp(void);
+static void start_mdns(void);
 
 /* ============================================================
  * Public API
@@ -130,6 +135,9 @@ esp_err_t wifi_manager_init(void)
         return ret;
     }
 
+    /* mDNS baslat — simcleverkapi.local ile erisim */
+    start_mdns();
+
     ESP_LOGI(TAG, "Wi-Fi baslatildi (APSTA modu)");
     ESP_LOGI(TAG, "AP SSID: %s", WIFI_AP_SSID);
 
@@ -205,6 +213,9 @@ esp_err_t wifi_manager_reconfigure(void)
     esp_wifi_disconnect();
     esp_wifi_stop();
 
+    /* mDNS durdur (yeniden baslatilacak) */
+    mdns_free();
+
     /* STA baglanti durumunu sifirla */
     xEventGroupClearBits(s_wifi_event_group, WIFI_STA_CONNECTED_BIT);
     s_retry_delay_ms = WIFI_STA_RETRY_INIT_MS;
@@ -229,6 +240,9 @@ esp_err_t wifi_manager_reconfigure(void)
         ESP_LOGE(TAG, "Wi-Fi yeniden baslatma basarisiz: %s", esp_err_to_name(ret));
         return ret;
     }
+
+    /* mDNS yeniden baslat */
+    start_mdns();
 
     ESP_LOGI(TAG, "Wi-Fi yeniden yapilandirildi");
     return ESP_OK;
@@ -432,4 +446,33 @@ static void start_sntp(void)
     /* Saat dilimi: Turkiye (UTC+3) */
     setenv("TZ", "UTC-3", 1);
     tzset();
+}
+
+/* ============================================================
+ * mDNS servisi — simcleverkapi.local
+ * ============================================================ */
+
+static void start_mdns(void)
+{
+    esp_err_t ret = mdns_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "mDNS baslatma basarisiz: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    ret = mdns_hostname_set(MDNS_HOSTNAME);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "mDNS hostname ayarlama basarisiz: %s", esp_err_to_name(ret));
+        return;
+    }
+
+    ret = mdns_instance_name_set("KAPI Erisim Kontrol Sistemi");
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS instance name ayarlama basarisiz: %s", esp_err_to_name(ret));
+    }
+
+    /* HTTP servisi tanimlama */
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+
+    ESP_LOGI(TAG, "mDNS baslatildi — hostname: %s.local", MDNS_HOSTNAME);
 }
