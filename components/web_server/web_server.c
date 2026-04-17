@@ -211,7 +211,11 @@ static esp_err_t login_post_handler(httpd_req_t *req)
  * ============================================================ */
 static esp_err_t logout_post_handler(httpd_req_t *req)
 {
-    auth_manager_logout();
+    /* Cookie'den token'i cikar ve sadece o oturumu kapat */
+    char token[AUTH_TOKEN_LEN];
+    if (get_session_token(req, token, sizeof(token)) == ESP_OK) {
+        auth_manager_logout(token);
+    }
 
     httpd_resp_set_hdr(req, "Set-Cookie", "session=; HttpOnly; Path=/; Max-Age=0");
     httpd_resp_set_type(req, "application/json");

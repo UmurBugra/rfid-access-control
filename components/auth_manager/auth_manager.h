@@ -25,6 +25,11 @@ extern "C" {
 #define AUTH_PASSWORD_MAX_LEN  64
 
 /**
+ * @brief Ayni anda aktif olabilecek maksimum session sayisi
+ */
+#define AUTH_MAX_SESSIONS  8
+
+/**
  * @brief auth_manager componentini baslatir
  *
  * NVS "auth" namespace'ini kontrol eder.
@@ -39,8 +44,10 @@ esp_err_t auth_manager_init(void);
  * @brief Kullanici adi ve sifre ile giris dogrulama
  *
  * SHA-256(password) hesaplar, NVS'teki hash ile karsilastirir.
- * Eslesirse 32 byte rastgele token uretir, NVS'e yazar,
+ * Eslesirse 32 byte rastgele token uretir, RAM'deki session listesine ekler,
  * expiry = simdi + 86400 saniye (24 saat).
+ * Ayni anda en fazla AUTH_MAX_SESSIONS kadar aktif oturum olabilir.
+ * Limit asildiysa en eski oturum silinir.
  *
  * @param username   Kullanici adi
  * @param password   Sifre (duz metin -- hash'lenmeden once)
@@ -53,7 +60,7 @@ esp_err_t auth_manager_verify(const char *username, const char *password, char *
 /**
  * @brief Session token gecerliligi kontrol eder
  *
- * Token NVS'teki ile eslesiyor mu ve expiry gecmemis mi kontrol eder.
+ * Token RAM'deki session listesinde var mi ve expiry gecmemis mi kontrol eder.
  *
  * @param token  Kontrol edilecek token string
  * @return true gecerli, false gecersiz veya suresi dolmus
@@ -61,19 +68,31 @@ esp_err_t auth_manager_verify(const char *username, const char *password, char *
 bool auth_manager_validate_token(const char *token);
 
 /**
- * @brief Oturumu kapatir
+ * @brief Belirli bir token'in oturumunu kapatir
  *
- * NVS'teki token ve expiry bilgisini siler.
+ * RAM'deki session listesinden ilgili token'i siler.
+ * Sadece o cihazin oturumu kapatilir, diger oturumlar etkilenmez.
+ *
+ * @param token  Kapatilacak oturumun token'i (NULL ise islem yapilmaz)
+ * @return ESP_OK basarili
+ */
+esp_err_t auth_manager_logout(const char *token);
+
+/**
+ * @brief Tum aktif oturumlari kapatir
+ *
+ * RAM'deki tum session'lari gecersiz kilar.
+ * Sifre degistirme gibi durumlarda kullanilir.
  *
  * @return ESP_OK basarili
  */
-esp_err_t auth_manager_logout(void);
+esp_err_t auth_manager_logout_all(void);
 
 /**
  * @brief Admin sifresini degistirir
  *
  * Eski sifre dogrulanir, yenisi SHA-256 hash olarak NVS'e yazilir.
- * Mevcut session token gecersiz kilinir (silinir).
+ * Tum aktif oturumlar gecersiz kilinir.
  *
  * @param old_pass  Mevcut sifre (duz metin)
  * @param new_pass  Yeni sifre (duz metin, en az 4 karakter)

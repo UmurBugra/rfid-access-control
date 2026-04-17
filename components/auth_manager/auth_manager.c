@@ -17,8 +17,6 @@ static const char *TAG = "auth_mgr";
 #define NVS_NS_AUTH     "auth"
 #define KEY_USERNAME    "username"
 #define KEY_PASS_HASH   "pass_hash"
-#define KEY_TOKEN       "token"
-#define KEY_EXPIRY      "expiry"
 
 /* Fabrika varsayilanlari */
 #define DEFAULT_USERNAME  "admin"
@@ -30,7 +28,19 @@ static const char *TAG = "auth_mgr";
 /* SHA-256 hash hex string uzunlugu (64 hex + null) */
 #define SHA256_HEX_LEN  65
 
-/* NVS erisimi icin mutex */
+/* ============================================================
+ * Coklu session yapisi (RAM'de tutulur)
+ * ============================================================ */
+
+typedef struct {
+    char token[AUTH_TOKEN_LEN];  /* 64 hex + null */
+    int64_t expiry;              /* unix timestamp */
+    bool active;                 /* slot kullaniliyor mu */
+} session_entry_t;
+
+static session_entry_t s_sessions[AUTH_MAX_SESSIONS];
+
+/* Erisim icin mutex */
 static SemaphoreHandle_t s_auth_mutex = NULL;
 
 /* ============================================================
@@ -117,6 +127,52 @@ static int64_t get_current_time(void)
     return (int64_t)now;
 }
 
+/**
+ * @brief Suresi dolmus session'lari temizler (mutex ALINMIS olmali)
+ */
+static void cleanup_expired_sessions(void)
+{
+    int64_t now = get_current_time();
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].active && now > s_sessions[i].expiry) {
+            ESP_LOGW(TAG, "Session suresi doldu, slot %d temizlendi", i);
+            s_sessions[i].active = false;
+            memset(s_sessions[i].token, 0, AUTH_TOKEN_LEN);
+        }
+    }
+}
+
+/**
+ * @brief Bos session slot'u bulur. Yoksa en eski oturumu atar.
+ *        (mutex ALINMIS olmali)
+ * @return slot index
+ */
+static int find_free_session_slot(void)
+{
+    /* Oncelikle bos slot ara */
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (!s_sessions[i].active) {
+            return i;
+        }
+    }
+
+    /* Bos slot yok — en eski expiry'ye sahip olani bul ve at */
+    int oldest_idx = 0;
+    int64_t oldest_expiry = s_sessions[0].expiry;
+    for (int i = 1; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].expiry < oldest_expiry) {
+            oldest_expiry = s_sessions[i].expiry;
+            oldest_idx = i;
+        }
+    }
+
+    ESP_LOGW(TAG, "Session slot dolu, en eski oturum (slot %d) silindi", oldest_idx);
+    s_sessions[oldest_idx].active = false;
+    memset(s_sessions[oldest_idx].token, 0, AUTH_TOKEN_LEN);
+
+    return oldest_idx;
+}
+
 /* ============================================================
  * Baslatma
  * ============================================================ */
@@ -129,6 +185,9 @@ esp_err_t auth_manager_init(void)
         ESP_LOGE(TAG, "Mutex olusturulamadi");
         return ESP_ERR_NO_MEM;
     }
+
+    /* Session listesini temizle */
+    memset(s_sessions, 0, sizeof(s_sessions));
 
     nvs_handle_t handle;
     esp_err_t ret = nvs_open(NVS_NS_AUTH, NVS_READWRITE, &handle);
@@ -184,8 +243,13 @@ esp_err_t auth_manager_init(void)
         return ret;
     }
 
+    /* Eski tek-token NVS key'lerini temizle (varsa) — artik RAM'de tutuyoruz */
+    nvs_erase_key(handle, "token");
+    nvs_erase_key(handle, "expiry");
+    nvs_commit(handle);
+
     nvs_close(handle);
-    ESP_LOGI(TAG, "Auth manager baslatildi");
+    ESP_LOGI(TAG, "Auth manager baslatildi (maks %d esanli oturum)", AUTH_MAX_SESSIONS);
     return ESP_OK;
 }
 
@@ -208,7 +272,7 @@ esp_err_t auth_manager_verify(const char *username, const char *password, char *
     }
 
     nvs_handle_t handle;
-    esp_err_t ret = nvs_open(NVS_NS_AUTH, NVS_READWRITE, &handle);
+    esp_err_t ret = nvs_open(NVS_NS_AUTH, NVS_READONLY, &handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NVS acilamadi: %s", esp_err_to_name(ret));
         auth_unlock();
@@ -244,52 +308,46 @@ esp_err_t auth_manager_verify(const char *username, const char *password, char *
         return ESP_FAIL;
     }
 
+    nvs_close(handle);
+
     char input_hash[SHA256_HEX_LEN];
     ret = compute_sha256(password, input_hash);
     if (ret != ESP_OK) {
-        nvs_close(handle);
         auth_unlock();
         return ESP_FAIL;
     }
 
     if (strcmp(input_hash, stored_hash) != 0) {
         ESP_LOGW(TAG, "Yanlis sifre girildi (kullanici: %s)", username);
-        nvs_close(handle);
         auth_unlock();
         return ESP_FAIL;
     }
 
-    /* Giris basarili -- token uret ve kaydet */
+    /* Giris basarili -- suresi dolmus session'lari temizle */
+    cleanup_expired_sessions();
+
+    /* Yeni token uret */
     generate_token(token_out);
 
-    ret = nvs_set_str(handle, KEY_TOKEN, token_out);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Token kaydedilemedi: %s", esp_err_to_name(ret));
-        nvs_close(handle);
-        auth_unlock();
-        return ret;
+    /* Bos slot bul ve tokeni kaydet */
+    int slot = find_free_session_slot();
+    strncpy(s_sessions[slot].token, token_out, AUTH_TOKEN_LEN - 1);
+    s_sessions[slot].token[AUTH_TOKEN_LEN - 1] = '\0';
+    s_sessions[slot].expiry = get_current_time() + TOKEN_LIFETIME_SEC;
+    s_sessions[slot].active = true;
+
+    /* Aktif oturum sayisini hesapla */
+    int active_count = 0;
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].active) {
+            active_count++;
+        }
     }
 
-    /* Expiry = simdi + 24 saat */
-    int64_t expiry = get_current_time() + TOKEN_LIFETIME_SEC;
-    ret = nvs_set_i64(handle, KEY_EXPIRY, expiry);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Expiry kaydedilemedi: %s", esp_err_to_name(ret));
-        nvs_close(handle);
-        auth_unlock();
-        return ret;
-    }
+    ESP_LOGI(TAG, "Giris basarili: %s (slot %d, aktif oturum: %d)", username, slot, active_count);
 
-    ret = nvs_commit(handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "NVS commit hatasi: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Giris basarili: %s", username);
-    }
-
-    nvs_close(handle);
     auth_unlock();
-    return ret;
+    return ESP_OK;
 }
 
 /* ============================================================
@@ -306,86 +364,90 @@ bool auth_manager_validate_token(const char *token)
         return false;
     }
 
-    nvs_handle_t handle;
-    esp_err_t ret = nvs_open(NVS_NS_AUTH, NVS_READONLY, &handle);
-    if (ret != ESP_OK) {
-        auth_unlock();
-        return false;
-    }
-
-    /* Kayitli token'i oku */
-    char stored_token[AUTH_TOKEN_LEN];
-    size_t token_len = sizeof(stored_token);
-    ret = nvs_get_str(handle, KEY_TOKEN, stored_token, &token_len);
-    if (ret != ESP_OK) {
-        /* Token kayitli degil -- oturum yok */
-        nvs_close(handle);
-        auth_unlock();
-        return false;
-    }
-
-    /* Token eslesme kontrolu */
-    if (strcmp(token, stored_token) != 0) {
-        nvs_close(handle);
-        auth_unlock();
-        return false;
-    }
-
-    /* Expiry kontrolu */
-    int64_t expiry = 0;
-    ret = nvs_get_i64(handle, KEY_EXPIRY, &expiry);
-    if (ret != ESP_OK) {
-        /* Expiry okunamazsa token gecersiz say */
-        nvs_close(handle);
-        auth_unlock();
-        return false;
-    }
-
     int64_t now = get_current_time();
-    if (now > expiry) {
-        ESP_LOGW(TAG, "Token suresi dolmus");
-        nvs_close(handle);
-        auth_unlock();
-        return false;
+
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (!s_sessions[i].active) {
+            continue;
+        }
+
+        /* Suresi dolmus mu kontrol et */
+        if (now > s_sessions[i].expiry) {
+            ESP_LOGW(TAG, "Session suresi doldu (slot %d), temizleniyor", i);
+            s_sessions[i].active = false;
+            memset(s_sessions[i].token, 0, AUTH_TOKEN_LEN);
+            continue;
+        }
+
+        /* Token eslesiyor mu */
+        if (strcmp(token, s_sessions[i].token) == 0) {
+            auth_unlock();
+            return true;
+        }
     }
 
-    nvs_close(handle);
     auth_unlock();
-    return true;
+    return false;
 }
 
 /* ============================================================
- * Cikis
+ * Cikis — belirli token'i sil
  * ============================================================ */
 
-esp_err_t auth_manager_logout(void)
+esp_err_t auth_manager_logout(const char *token)
+{
+    if (token == NULL || strlen(token) == 0) {
+        /* Token yoksa islem yapma, hata donme */
+        ESP_LOGW(TAG, "Logout: token bos, islem yapilmadi");
+        return ESP_OK;
+    }
+
+    if (!auth_lock()) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    bool found = false;
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].active && strcmp(token, s_sessions[i].token) == 0) {
+            s_sessions[i].active = false;
+            memset(s_sessions[i].token, 0, AUTH_TOKEN_LEN);
+            found = true;
+            ESP_LOGI(TAG, "Oturum kapatildi (slot %d)", i);
+            break;
+        }
+    }
+
+    if (!found) {
+        ESP_LOGW(TAG, "Logout: token bulunamadi (zaten gecersiz olabilir)");
+    }
+
+    auth_unlock();
+    return ESP_OK;
+}
+
+/* ============================================================
+ * Tum oturumlari kapat
+ * ============================================================ */
+
+esp_err_t auth_manager_logout_all(void)
 {
     if (!auth_lock()) {
         return ESP_ERR_TIMEOUT;
     }
 
-    nvs_handle_t handle;
-    esp_err_t ret = nvs_open(NVS_NS_AUTH, NVS_READWRITE, &handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "NVS acilamadi: %s", esp_err_to_name(ret));
-        auth_unlock();
-        return ret;
+    int count = 0;
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].active) {
+            s_sessions[i].active = false;
+            memset(s_sessions[i].token, 0, AUTH_TOKEN_LEN);
+            count++;
+        }
     }
 
-    /* Token ve expiry sil */
-    nvs_erase_key(handle, KEY_TOKEN);
-    nvs_erase_key(handle, KEY_EXPIRY);
+    ESP_LOGI(TAG, "Tum oturumlar kapatildi (%d adet)", count);
 
-    ret = nvs_commit(handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "NVS commit hatasi: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Oturum kapatildi");
-    }
-
-    nvs_close(handle);
     auth_unlock();
-    return ret;
+    return ESP_OK;
 }
 
 /* ============================================================
@@ -458,18 +520,27 @@ esp_err_t auth_manager_change_password(const char *old_pass, const char *new_pas
         return ret;
     }
 
-    /* Mevcut token'i gecersiz kil */
-    nvs_erase_key(handle, KEY_TOKEN);
-    nvs_erase_key(handle, KEY_EXPIRY);
-
     ret = nvs_commit(handle);
+    nvs_close(handle);
+
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "NVS commit hatasi: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Sifre basariyla degistirildi, mevcut oturum gecersiz kilinid");
+        auth_unlock();
+        return ret;
     }
 
-    nvs_close(handle);
+    /* Tum aktif oturumlari gecersiz kil */
+    int count = 0;
+    for (int i = 0; i < AUTH_MAX_SESSIONS; i++) {
+        if (s_sessions[i].active) {
+            s_sessions[i].active = false;
+            memset(s_sessions[i].token, 0, AUTH_TOKEN_LEN);
+            count++;
+        }
+    }
+
+    ESP_LOGI(TAG, "Sifre basariyla degistirildi, %d oturum gecersiz kilinid", count);
+
     auth_unlock();
     return ret;
 }
